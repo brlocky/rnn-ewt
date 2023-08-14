@@ -20,34 +20,39 @@ def enrich_data(file_path):
     for i in range(2, len(df)):
         high = df['High'][i]
         low = df['Low'][i]
-        open_price = df['Open'][i]
+        open = df['Open'][i]
         close = df['Close'][i]
 
-        if close > open_price:
+        if close > open:
             trend = 1
-        elif open_price > close:
+        elif open > close:
             trend = -1
         else:
             trend = 0
 
         labeled_row = {
-            'Open': open_price,
+            'Date': df['Date'][i],  # Include the 'Date' column
+            'Open': open,
             'High': high,
             'Low': low,
             'Close': close,
             'HighLow': high - low,
-            'CloseOpen': close - open_price,
+            'CloseOpen': close - open,
             'TrendLabel': trend
         }
+
         labeled_data.append(labeled_row)
 
     # Create a new DataFrame with the enriched data
-    df_for_training = pd.DataFrame(labeled_data)
+    df_original = pd.DataFrame(labeled_data)
 
     # Clear na
-    df_for_training.fillna(0, inplace=True)
+    df_original.fillna(0, inplace=True)
 
-    return df, labeled_data, df_for_training, feature_columns
+    df_original['Date'] = pd.to_datetime(df_original['Date'])
+    df_data = df_original.drop(columns=['Date'])
+
+    return df, df_original, df_data, feature_columns
 
 
 def prepare_training_data(df_for_training_scaled):
@@ -94,21 +99,6 @@ def predict(model, df, trainX, trainY, df_for_training_scaled, scaler):
     n_past = 16
     n_days_for_prediction = 15  # number of days to feed the network
 
-    # Separate dates for future plotting
-    train_dates = pd.to_datetime(df['Date'])
-
-    # Generate future prediction dates
-    predict_period_dates = pd.date_range(
-        list(train_dates)[-n_past], periods=n_days_for_prediction, freq=us_bd).tolist()
-
-    print('predict_period_dates', len(
-        predict_period_dates), predict_period_dates)
-    # normalize the prediction
-    # scaler = StandardScaler()
-    # Reshape trainY to 2D array
-    # trainY_reshaped = trainY.reshape(-1, 2)
-    # scaler = scaler.fit(trainY_reshaped)
-
     # Prepare training data
     trainX, trainY = prepare_training_data(df_for_training_scaled)
 
@@ -116,27 +106,42 @@ def predict(model, df, trainX, trainY, df_for_training_scaled, scaler):
     prediction = model.predict(trainX[-n_days_for_prediction:])
 
     # Create dummy columns for missing features
-    num_missing_features = 7 - prediction.shape[1]
-    dummy_columns = np.zeros((prediction.shape[0], num_missing_features))
+    # num_missing_features = 7 - prediction.shape[1]
+    # dummy_columns = np.zeros((prediction.shape[0], num_missing_features))
 
     # Concatenate the prediction and dummy columns
-    prediction_with_dummy = np.concatenate((prediction, dummy_columns), axis=1)
+    # prediction_with_dummy = np.concatenate((prediction, dummy_columns), axis=1)
 
     # Inverse transform using the original scaler
-    predicted_features = scaler.inverse_transform(prediction_with_dummy)
+    # predicted_features = scaler.inverse_transform(prediction_with_dummy)
+
+    # normalize the prediction
+    scaler = StandardScaler()
+    # Reshape trainY to 2D array
+    trainY_reshaped = trainY.reshape(-1, 2)
+    scaler = scaler.fit(trainY_reshaped)
+
+    # Inverse transform using the original scaler
+    predicted_features = scaler.inverse_transform(prediction)
 
     # Extract the predicted 'CloseOpen' and 'Close' features
     y_pred_future_closeopen = predicted_features[:, 1]
     y_pred_future_close = predicted_features[:, 0]
+    # print('y_pred_future_close', y_pred_future_close)
 
-    print('y_pred_future_close', y_pred_future_close)
-    print('y_pred_future_closeopen', y_pred_future_closeopen)
+    # Separate dates for future plotting
+    train_dates = pd.to_datetime(df['Date'])
+
+    # Generate future prediction dates
+    predict_period_dates = pd.date_range(
+        list(train_dates)[-n_past], periods=n_days_for_prediction, freq=us_bd).tolist()
 
     # Convert timestamp to date
     forecast_dates = []
     for time_i in predict_period_dates:
         forecast_dates.append(time_i.date())
 
+    print('forecast_dates', forecast_dates)
     # Create a DataFrame for the forecasted values
     df_forecast = pd.DataFrame({
         'Date': forecast_dates,
