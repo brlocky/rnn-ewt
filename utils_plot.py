@@ -31,11 +31,13 @@ def print_plot_model_loss(output_filename, loss, val_loss):
     plt.clf()  # Clear the current figure
 
 
-def print_plot_prediction_close(filename, original, forecast, feature):
+def print_plot_prediction_close(filename, original, forecast, forecast_2,  feature):
     plt.figure(figsize=(12, 6))
     plt.plot(original['Date'], original[feature], label='Actual ' + feature)
     plt.plot(forecast['Date'], forecast[feature],
-             label='Forecasted ' + feature)
+             label='Forecasted 14 ' + feature)
+    plt.plot(forecast_2['Date'], forecast_2[feature],
+             label='Forecasted 7 ' + feature)
     plt.title('Actual vs Forecasted ' + feature)
     plt.xlabel('Date')
     plt.ylabel(feature + ' Value')
