@@ -1,4 +1,6 @@
 import matplotlib.pyplot as plt  # Import the matplotlib.pyplot module
+import mplfinance as mpf
+import numpy as np
 
 
 def print_plot_model_loss(output_filename, loss, val_loss):
@@ -43,7 +45,7 @@ def print_plot_prediction_close(filename, original, forecast):
     plt.clf()
 
 
-prediction_columns = ['Wave 1', 'Wave 2', 'Wave 3', 'Wave 4', 'Wave 5']
+prediction_columns = ['1', '2', '3', '4', '5']
 
 
 def print_plot_prediction_waves(filename, original, forecast):
@@ -60,13 +62,9 @@ def print_plot_prediction_waves(filename, original, forecast):
     # Create the secondary y-axis for wave predictions
     ax2 = ax1.twinx()
 
-    # Plot waves as bars on the secondary y-axis
-    for idx, wave_col in enumerate(prediction_columns):
-        ax2.bar(forecast['Date'], forecast[wave_col],
-                label=wave_col, alpha=0.5)
-
-    ax2.plot(forecast['Date'], forecast['Largest_Wave'],
-             label='Largest Wave', linestyle='dashed', linewidth=2, color='red')
+    for wave_col in prediction_columns:
+        ax2.bar(forecast['Date'], forecast['Wave' + wave_col],
+                alpha=0.5, label='Wave ' + wave_col)
 
     ax2.set_ylabel('Wave Prediction', color='red')
     ax2.tick_params(axis='y', labelcolor='red')
@@ -79,6 +77,32 @@ def print_plot_prediction_waves(filename, original, forecast):
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax2.legend(lines + lines2, labels + labels2, loc='upper left')
 
+    plt.tight_layout()
+    plt.savefig(filename)
+    plt.clf()
+
+
+def plot_candlestick_chart(data, output_filename):
+    # Convert data to DataFrame with Date as index
+    df = data.set_index('Date')
+
+    # Define the style of the candlestick chart
+    style = mpf.make_mpf_style(base_mpf_style='charles', rc={
+                               "axes.labelcolor": "w"})
+
+    # Create the candlestick chart
+    mpf.plot(df, type='candle', style=style, savefig=output_filename)
+
+
+def plot_pivots(data, pivots, filename):
+    plt.xlim(0, len(data))
+    plt.ylim(data.min()*0.99, data.max()*1.01)
+    plt.plot(np.arange(len(data)), data, 'k:', alpha=0.5)
+    plt.plot(np.arange(len(data))[pivots != 0], data[pivots != 0], 'k-')
+    plt.scatter(np.arange(len(data))[pivots == 1],
+                data[pivots == 1], color='g')
+    plt.scatter(np.arange(len(data))[
+                pivots == -1], data[pivots == -1], color='r')
     plt.tight_layout()
     plt.savefig(filename)
     plt.clf()

@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+from keras.utils import to_categorical
 
 # Define the column names
 original_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
@@ -9,7 +10,7 @@ feature_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
 label_columns = ['Wave1', 'Wave2', 'Wave3', 'Wave4', 'Wave5']
 
 
-class MarketDataProcessor:
+class InputProcessor:
     def __init__(self, file_path):
         self.file_path = file_path
         self.scaler = StandardScaler()
@@ -49,9 +50,12 @@ class MarketDataProcessor:
             y_train, y_test = None, None
 
         # Normalize the data using a StandardScaler
-        self.scaler = StandardScaler()
-        X_train_scaled = self.scaler.fit_transform(X_train)
-        X_test_scaled = self.scaler.transform(X_test)
+        # self.scaler = StandardScaler()
+        # X_train_scaled = self.scaler.fit_transform(X_train)
+        # X_test_scaled = self.scaler.transform(X_test)
+
+        X_train_scaled = X_train
+        X_test_scaled = X_test
 
         # Create sequences for training data
         X_train_sequences, y_train_sequences = self.create_sequences(
@@ -72,11 +76,12 @@ class MarketDataProcessor:
         sequences = []
         targets = []
 
-        for i in range(len(data) - length + 1):
-            sequence = data[i:i + length]
+        for i in range(length, len(data)):
+            sequence = data[i - length:i]
             if target is not None:
-                label = target[i + length - 1]
+                label = target[i - 1]
                 targets.append(label)
+
             sequences.append(sequence)
 
         return np.array(sequences), np.array(targets)
