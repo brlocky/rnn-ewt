@@ -46,7 +46,7 @@ class InputProcessor:
                 features, labels, test_size=0.2)
         else:
             X_train, X_test = train_test_split(
-                features, test_size=0.2)
+                features, test_size=0.2, shuffle=False)
             y_train, y_test = None, None
 
         # Normalize the data using a StandardScaler
