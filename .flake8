@@ -1,0 +1,38 @@
+[flake8]
+# Turn on everything
+# Default: E,F,W,C90             
+# E***/W***: pep8 errors and warnings
+# F***: PyFlakes codes 
+# C9**: McCabe complexity plugin mccabe
+# N8**: Naming Conventions plugin pep8-naming
+select = E, W, F, C, N
+
+exclude = .git,__pycache__,venv
+
+
+ignore = E203, E401, E402, E501, E722, W292, W391, W503, W605, F401, F402, F811, F821, F841, N803
+# E203 Whitespace before ':' also hits slices, e.g. '1 : 10'.
+# E401 Multiple imports on one line: handled by pylint multiple-imports
+# E402 Module level import not at top of file: pylint wrong-import-position handles this.
+# E501 Line too long (we are using black to enforce this).
+# E722 Do not use bare 'except': pylint bare-except handles this
+# W292 No newline at end of file: dealt with by pylint
+# W391 Blank line at end of file: duplicates pylint trailing-newlines
+# W503 Line break occurred before a binary operator
+#   PEP8 flipped on this: https://github.com/python/peps/commit/c59c4376ad233a62ca4b3a6060c81368bd21e85b
+# W605 Invalid escape sequence: dealt with by pylint anomalous-backslash-in-string
+# F401 module imported but unused: false positive when a top-level __init__ wants to export names from submodules.
+# F402 shadowed loop variable: duplicates pylint redefined-outer-name
+# F811 redefinition: duplicates pylint function-refined
+# F821 undefined name: dealt with by pylint undefined-variable
+# F841 local variable is assigned to but never used: pylint unused-variable handles this
+# N803 Argument name should be lower case
+
+# Other ignored rules I've seen
+# E266 Too many leading '#' for block comment 
+# F403 'from module import *' used; unable to detect undefined names
+
+max-line-length = 88
+
+# McCabe Complexity
+max-complexity = 20
