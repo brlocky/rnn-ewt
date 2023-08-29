@@ -1,4 +1,5 @@
 import os
+from re import A
 import shutil
 from matplotlib import pyplot as plt
 import mplfinance as mpf
@@ -13,7 +14,6 @@ from EwClassifier.utils_plot import plot_pivots
 
 # Define the path to the data folder
 csv_directory = 'csv_data'
-
 # Delete the directory and its contents if it exists
 if os.path.exists(csv_directory):
     shutil.rmtree(csv_directory)
