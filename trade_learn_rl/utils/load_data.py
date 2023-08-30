@@ -13,6 +13,15 @@ def load_data(file_name_with_path):
     # Load file
     df = load_file(file_name_with_path)
 
+    # TODO: remove off market history for stock only, pay attentiont to futures
+    # Define the time ranges to filter out
+    start_time = pd.to_datetime('08:55:00').time()
+    end_time = pd.to_datetime('21:05:00').time()
+
+    # Filter out off market history
+    df = df[(df['Date'].dt.time >= start_time)
+            & (df['Date'].dt.time <= end_time)]
+
     # Rename column Datetime to Date
     """ df = df.rename(
         columns={

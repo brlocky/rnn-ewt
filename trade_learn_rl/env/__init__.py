@@ -5,6 +5,8 @@ from copy import deepcopy
 
 from gym_anytrading import datasets
 
+from .portfolio import Portfolio, Trade, Portfolio, TradeDirection
+
 register(
     id='custom-v0',
     entry_point='env:CustomEnv',

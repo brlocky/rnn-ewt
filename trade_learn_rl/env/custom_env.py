@@ -3,6 +3,10 @@ from gymnasium import spaces
 import numpy as np
 from enum import Enum
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import mplfinance as mpf
+from .portfolio import Portfolio, TradeDirection
+import plotly.graph_objs as go
 
 
 class Actions(Enum):
@@ -22,23 +26,21 @@ class CustomEnv(gym.Env):
 
     metadata = {'render_modes': ['human']}
 
-    def __init__(self, df, window_size, frame_bound, render_mode=None):
+    def __init__(self, df, window_size, render_mode=None):
         super().__init__()
-
+        assert window_size >= 1
         assert df.ndim == 2
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
-
-        assert len(frame_bound) == 2
-        self.frame_bound = frame_bound
 
         self.trade_fee_bid_percent = 0.01  # unit
         self.trade_fee_ask_percent = 0.005  # unit
 
         self.df = df
         self.window_size = window_size
-        self.prices, self.signal_features = self._process_data()
+        self.prices, self.dates, self.volumes, self.signal_features = self._process_data()
         self.shape = (window_size, self.signal_features.shape[1])
+        self._initial_balance = 10000
 
         # spaces
         self.action_space = spaces.Discrete(len(Actions))
@@ -50,176 +52,180 @@ class CustomEnv(gym.Env):
         self._start_tick = self.window_size
         self._end_tick = len(self.prices) - 1
         self._terminated = False
-        self._current_tick = 0
-        self._last_trade_tick = 0
-        self._position = Positions.NoPosition
-        self._position_history = []
-        self._shares_history = []
-        self._total_reward = 0
-        self._total_profit = 0
-        self._first_rendering = True
-        self.history = {}
-        self._share_size = 10
-        self._shares = 0
-        self._initial_balance = 1000
-        self._balance = 0
 
-    def _get_info(self):
-        return dict(
-            total_reward=self._total_reward,
-            total_profit=self._total_profit,
-            position=self._position.value
-        )
+        self._current_tick = self._start_tick
+        self._position = Positions.NoPosition
+        self._action = Actions.NoAction
+
+        self._total_reward = 0
+
+        self._porfolio = Portfolio(self._initial_balance)
+        self._share_size = 1
+
+        self._history = []
+        self._reset_counter = -1
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
+        self._reset_counter += 1
 
+        self.prices, self.dates, self.volumes, self.signal_features = self._process_data()
+        self._porfolio = Portfolio(self._initial_balance)
         self._terminated = False
         self._current_tick = self._start_tick
-        self._last_trade_tick = 0
         self._position = Positions.NoPosition
-        self._position_history = (self.window_size * [None]) + [self._position]
-        self._shares = 0
-        self._shares_history = (self.window_size * [0]) + [self._shares]
+        self._action = Actions.NoAction
+
         self._total_reward = 0.
-        self._total_profit = 0.
-        self._first_rendering = True
-        self.history = {}
-        self._balance = self._initial_balance
+        # self._position_history = (self.window_size * [None]) + [self._position]
 
+        info = self._get_history_info()
         observation = self._get_observation()
-        info = self._get_info()
 
-        if self.render_mode == "human":
-            self._render_frame()
+        # Create History
+        info = self._get_history_info()
+        history = (self.window_size * [info])
+        self._history.append(history)
 
         return observation, info
 
     def step(self, action):
-        self._terminated = False
-        self._current_tick += 1
 
-        if self._current_tick == self._end_tick:
-            self._terminated = True
+        self._action = Actions(action)
 
-        action = Actions(action)
+        # We use the price where the action was taken
+        current_price = self.prices[self._current_tick]
 
         # Open Long
-        if action == Actions.Buy:
+        if self._action == Actions.Buy:
+            self._porfolio.open_trade(
+                TradeDirection.Long, current_price, self._share_size)
             self._position = Positions.Long
-            self._last_trade_tick = self._current_tick
-            self._shares = self._share_size
 
         # Open Short
-        if action == Actions.Sell:
+        if self._action == Actions.Sell:
+            self._porfolio.open_trade(
+                TradeDirection.Short, current_price, self._share_size)
             self._position = Positions.Short
-            self._last_trade_tick = self._current_tick
-            self._shares = self._share_size
 
         # Close Position
-        if action == Actions.Close:
+        if self._action == Actions.Close:
+            self._porfolio.close_trade(current_price)
             self._position = Positions.NoPosition
-            self._shares = 0
 
-        self._position_history.append(self._position)
-        self._shares_history.append(self._shares)
+        self._porfolio.update(current_price)
 
-        step_reward = self._calculate_reward(action)
-
-        self._update_profit(action)
-
+        step_reward = self._calculate_reward(self._action)
         self._total_reward += step_reward
 
         observation = self._get_observation()
-        info = self._get_info()
-        self._update_history(info)
+        info = self._update_history(self._current_tick)
 
-        if self.render_mode == "human":
-            self._render_frame()
+        self._current_tick += 1
+        self._terminated = True if self._current_tick == self._end_tick else False
 
         return observation, step_reward, self._terminated, False, info
 
-    def _get_observation(self):
-        currentPositon = self._position_history[self._current_tick].value
-        currentShares = self._shares_history[self._current_tick]
-        currentShares = self._shares_history[self._current_tick]
+    def _calculate_reward(self, action):
+        step_reward = self._porfolio.get_total_pnl()
 
-        # Update values only in the last tick of self.signal_features
-        # Update current postion
-        self.signal_features[self._current_tick, -3] = currentPositon
+        """ if action == Actions.Buy:
+            step_reward += 0.3
+
+        if action == Actions.Sell:
+            step_reward += 0.3
+         """
+        last_position = self._history[self._reset_counter][-1]['position']
+        if action == Actions.Buy and last_position != Positions.NoPosition:
+            step_reward -= 0.3
+
+        if action == Actions.Sell and last_position != Positions.NoPosition:
+            step_reward -= 0.3
+
+        if action == Actions.Close and last_position != Positions.NoPosition:
+            step_reward -= 0.5
+
+        if action == Actions.NoAction and last_position == Positions.NoPosition:
+            step_reward -= 0.1
+
+        return step_reward
+
+    def _get_observation(self):
+        info = self._get_history_info()
+        # Update current position
+        self.signal_features[self._current_tick, -3] = info['position'].value
 
         # Update current shares
-        self.signal_features[self._current_tick, -2] = currentShares
+        self.signal_features[self._current_tick, -2] = self._share_size
 
         # Update Porfolio value
-        self.signal_features[self._current_tick, -1] = self._balance
+        self.signal_features[self._current_tick, -1] = info['total_profit']
 
-        return self.signal_features[(self._current_tick - self.window_size):self._current_tick]
+        observation = self.signal_features[(
+            self._current_tick - self.window_size + 1):self._current_tick + 1]
+        return observation
 
-    def _update_history(self, info):
-        if not self.history:
-            self.history = {key: [] for key in info.keys()}
+    def _get_history_info(self):
+        return {
+            "total_reward": self._total_reward,
+            "total_profit": self._porfolio.get_balance(),
+            "position": self._position,
+            "action": self._action,
+        }
 
-        for key, value in info.items():
-            self.history[key].append(value)
+    def _update_history(self, index):
+        info = self._get_history_info()
+        self._history[self._reset_counter].append(info)
 
-    def _render_frame(self):
-        self.render()
+        # Return history
+        return info
 
     def render(self, mode='human'):
+        # Create a new figure for Price
+        fig1, ax1 = plt.subplots(figsize=(12, 3))
+        ax1.plot(self.dates, self.prices)
+        ax1.set_title('Price')
 
-        def _plot_position(position, tick):
-            color = None
-            if position == Positions.Short:
-                color = 'red'
-            elif position == Positions.Long:
-                color = 'green'
-            elif position == Positions.NoPosition:
-                color = 'black'
-            if color:
-                plt.scatter(tick, self.prices[tick], color=color)
-
-        if self._first_rendering:
-            self._first_rendering = False
-            plt.cla()
-            plt.plot(self.prices)
-            start_position = self._position_history[self._start_tick]
-            _plot_position(start_position, self._start_tick)
-
-        _plot_position(self._position, self._current_tick)
-
-        plt.suptitle(
-            "Total Reward: %.6f" % self._total_reward + ' ~ '
-            + "Total Profit: %.6f" % self._total_profit
-        )
-
-        plt.pause(0.01)
-
-    def render_all(self, title=None):
-        window_ticks = np.arange(len(self._position_history))
-        plt.plot(self.prices)
-
+        render_hist = self._history[self._reset_counter - 1]
         short_ticks = []
         long_ticks = []
-        noposition_ticks = []
-        for i, tick in enumerate(window_ticks):
-            if self._position_history[i] == Positions.Short:
-                short_ticks.append(tick)
-            elif self._position_history[i] == Positions.Long:
-                long_ticks.append(tick)
-            elif self._position_history[i] == Positions.NoPosition:
-                noposition_ticks.append(tick)
+        close_ticks = []
+        for i in range(self._start_tick, len(render_hist) - 1):
+            position = render_hist[i]['position']
+            action = render_hist[i]['action']
+            if position == Positions.Short:
+                short_ticks.append(i)
+            elif position == Positions.Long:
+                long_ticks.append(i)
 
-        plt.plot(short_ticks, self.prices[short_ticks], 'ro')
-        plt.plot(long_ticks, self.prices[long_ticks], 'go')
-        plt.plot(noposition_ticks, self.prices[noposition_ticks], 'x')
+            if action == Actions.Close:
+                close_ticks.append(i)
 
-        if title:
-            plt.title(title)
+        plt.plot(self.dates[short_ticks],
+                 self.prices[short_ticks], 'ro', label='Short')
+        plt.plot(self.dates[long_ticks],
+                 self.prices[long_ticks], 'go', label='Long')
+        plt.plot(self.dates[close_ticks],
+                 self.prices[close_ticks], 'bx', label='Close')
+
+        total_reward = render_hist[-1]['total_reward']
+        total_profit = render_hist[-1]['total_profit']
+
         plt.suptitle(
-            "Total Reward: %.6f" % self._total_reward + ' ~ '
-            + "Total Profit: %.6f" % self._total_profit
+            "Total Reward: %.6f" % total_reward + ' ~ '
+            + "Total Profit: %.6f" % total_profit
         )
+
+        plt.tight_layout()
+        plt.show()
+
+        # Create a new figure for Volume
+        """ fig2, ax2 = plt.subplots(figsize=(12, 2))
+        ax2.plot(self.dates, self.volumes)
+        ax2.set_title('Volume')
+
+        plt.tight_layout()
+        plt.show() """
 
     def close(self):
         plt.close()
@@ -227,63 +233,20 @@ class CustomEnv(gym.Env):
     def save_rendering(self, filepath):
         plt.savefig(filepath)
 
-    def pause_rendering(self):
-        plt.show()
-
-    def _calculate_reward(self, action):
-        step_reward = 0
-        if action == Actions.Buy:
-            step_reward = 1
-
-        if action == Actions.Sell:
-            step_reward = 1
-
-        if action == Actions.Close:
-            step_reward = self._get_trade_pnl(self._last_trade_tick, self._current_tick)
-
-        return step_reward
-
     def _process_data(self):
         prices = self.df.loc[:, 'Close'].to_numpy()
 
-        prices[self.frame_bound[0] - self.window_size]
-        prices = prices[self.frame_bound[0] - self.window_size:self.frame_bound[1]]
+        dates = self.df.index
+        volumes = self.df.loc[:, 'Volume'].to_numpy()
 
         diff = np.insert(np.diff(prices), 0, 0)
         signal_features = np.column_stack((prices, diff))
 
         # Adding three empty columns
-        empty_columns = np.empty((signal_features.shape[0], 3))
+        empty_columns = np.zeros((signal_features.shape[0], 3))
         signal_features_with_empty = np.hstack((signal_features, empty_columns))
 
-        return prices, signal_features_with_empty
-
-    def _get_trade_pnl(self, start_index, end_index):
-        buy_price = self.prices[start_index]
-        sell_price = self.prices[end_index]
-        shares = self._shares_history[start_index]
-        pnl = 0
-
-        # Long Pnl
-        if self._position_history[start_index] == Positions.Long:
-            pnl = shares * (sell_price - buy_price)
-
-        # Short Pnl
-        if self._position_history[start_index] == Positions.Short:
-            pnl = shares * (buy_price - sell_price)
-
-        return pnl
-
-    def _update_profit(self, action):
-        self._total_profit = 0
-
-        if self._position != Positions.NoPosition:
-            self._total_profit = self._get_trade_pnl(
-                self._current_tick - 1, self._current_tick)
-
-        if action == Actions.Close:
-            self._balance += self._get_trade_pnl(self._last_trade_tick,
-                                                 self._current_tick)
+        return prices, dates, volumes, signal_features_with_empty
 
     def max_possible_profit(self):
         current_tick = self._start_tick
