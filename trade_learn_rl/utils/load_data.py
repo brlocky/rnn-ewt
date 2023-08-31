@@ -15,8 +15,8 @@ def load_data(file_name_with_path):
 
     # TODO: remove off market history for stock only, pay attentiont to futures
     # Define the time ranges to filter out
-    start_time = pd.to_datetime('08:55:00').time()
-    end_time = pd.to_datetime('21:05:00').time()
+    start_time = pd.to_datetime('09:00:00').time()
+    end_time = pd.to_datetime('21:00:00').time()
 
     # Filter out off market history
     df = df[(df['Date'].dt.time >= start_time)
@@ -50,10 +50,10 @@ def load_data(file_name_with_path):
     df["feature_close"] = df["Close"]
 
     # Create columns for technical indicator features
-    # df['feature_rsi'] = TA.RSI(df, 16)
+    df['feature_rsi'] = TA.RSI(df, 12)
     df['feature_vwap'] = TA.VWAP(df)
-    df['feature_ema'] = TA.EMA(df)
-    # df['feature_atr'] = TA.ATR(df)
+    df['feature_ema'] = TA.EMA(df, period=50)
+    df['feature_atr'] = TA.ATR(df)
     df.dropna(inplace=True)
 
     return df
