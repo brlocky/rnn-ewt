@@ -1,3 +1,4 @@
+from collections import Counter
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
@@ -156,30 +157,33 @@ class CustomEnv(gym.Env):
 
         # Opened Position
         if (action == Actions.Buy or action == Actions.Sell) and last_position == Positions.NoPosition:
-            step_reward += 10 * (self._initial_reward_factor - self._reward_factor)
+            # step_reward += 10 * (self._initial_reward_factor - self._reward_factor)
+            step_reward = 1
 
         # Position Closed
         if action == Actions.Close:
             if (last_position == Positions.Long or last_position == Positions.Short):
-                if trade_pnl >= 0:
+                step_reward = 1
+                """ if trade_pnl >= 0:
                     step_reward = trade_pnl * (trade_ticks * self._reward_factor)
                 else:
                     step_reward = trade_pnl * trade_ticks if trade_ticks > 3 else 0
 
                 # Decrease reward factor on each close
                 self._reward_factor -= self._reward_factor_fraction if self._reward_factor > self._reward_factor_fraction else self._reward_factor
-
+                """
             # Position Closed without trade
-            else:
-                step_reward = -5 * (self._initial_reward_factor - self._reward_factor)
+            # else:
+            #   step_reward = -5 * (self._initial_reward_factor - self._reward_factor)
 
         # Holding Position
         if action == Actions.Hold and (last_position == Positions.Long or last_position == Positions.Short):
-            hold_pnl = self._porfolio.get_open_pnl()
-            if hold_pnl >= 0:
-                step_reward = hold_pnl * (trade_ticks * self._reward_factor)
-            else:
-                step_reward = hold_pnl * trade_ticks if trade_ticks > 3 else 0
+            step_reward = 1 * trade_ticks
+            # hold_pnl = self._porfolio.get_open_pnl()
+            # if hold_pnl >= 0:
+            #   step_reward = hold_pnl * (trade_ticks * self._reward_factor)
+            # else:
+            #    step_reward = hold_pnl * trade_ticks if trade_ticks > 3 else 0
 
         # Maybe decrease reward factor on errors ?
 
@@ -200,7 +204,7 @@ class CustomEnv(gym.Env):
             self._current_tick - self.window_size):self._current_tick]
 
         # Price, Price diff, position, pnl, balance
-        reshaped_observation = observation.reshape(observation.shape[0], 3, 3)
+        reshaped_observation = observation.reshape(observation.shape[0], 2, 3)
 
         return reshaped_observation
 
@@ -218,9 +222,9 @@ class CustomEnv(gym.Env):
         input_features = np.zeros((len(dates), 3), dtype=np.float64)
         signal_features = np.hstack((
             prices.reshape(-1, 1),
-            vwap.reshape(-1, 1),
-            ema.reshape(-1, 1),
-            atr.reshape(-1, 1),
+            # vwap.reshape(-1, 1),
+            # ema.reshape(-1, 1),
+            # atr.reshape(-1, 1),
             rsi.reshape(-1, 1),
             volumes.reshape(-1, 1),
             input_features))
@@ -253,39 +257,57 @@ class CustomEnv(gym.Env):
                         str(i) for i, date in enumerate(self.dates)]
 
         ax1.plot(date_strings, self.prices)
-        ax1.set_title('Price')
-
-        # Use the modified date_strings
+        # Customize x-axis labels
+        ax1.set_xticks(range(len(date_strings)))
         ax1.set_xticklabels(date_strings, rotation=45, fontsize=6)
 
         render_hist = self._history[self._reset_counter - 1]
-        short_ticks = []
-        long_ticks = []
-        close_ticks = []
-        for i in range(self._start_tick, len(render_hist) - 1):
-            position = render_hist[i]['position']
-            action = render_hist[i]['action']
-            if action == Actions.Buy:
-                long_ticks.append(i)
-            elif action == Actions.Sell:
-                short_ticks.append(i)
-            elif action == Actions.Close:
-                close_ticks.append(i)
+        short_ticks = [i for i, obj in enumerate(
+            render_hist) if obj['action'] == Actions.Sell]
+        long_ticks = [i for i, obj in enumerate(
+            render_hist) if obj['action'] == Actions.Buy]
+        close_ticks = [i for i, obj in enumerate(
+            render_hist) if obj['action'] == Actions.Close]
 
-        plt.plot(short_ticks,
-                 self.prices[short_ticks], 'ro', label='Short')
-        plt.plot(long_ticks,
-                 self.prices[long_ticks], 'go', label='Long')
-        plt.plot(close_ticks,
-                 self.prices[close_ticks], 'bx', label='Close')
+        plt.plot(short_ticks, self.prices[short_ticks], 'ro', label='Short')
+        plt.plot(long_ticks, self.prices[long_ticks], 'go', label='Long')
+        plt.plot(close_ticks, self.prices[close_ticks], 'bx', label='Close')
+
+        short_position_ticks = [i for i, obj in enumerate(
+            render_hist) if obj['position'] == Positions.Short]
+        long_position_ticks = [i for i, obj in enumerate(
+            render_hist) if obj['position'] == Positions.Long]
+        no_position_ticks = [i for i, obj in enumerate(
+            render_hist) if obj['position'] == Positions.NoPosition]
+
+        max_price = max(self.prices)  # Get the maximum price from your data
+
+        plt.plot(short_position_ticks, [
+                 max_price] * len(short_position_ticks), 'rs', label='Short Position')
+        plt.plot(long_position_ticks, [max_price]
+                 * len(long_position_ticks), 'gs', label='Long Position')
+        plt.plot(no_position_ticks, [max_price]
+                 * len(no_position_ticks), 'bs', label='No Position')
 
         total_reward = render_hist[-1]['total_reward']
         total_profit = render_hist[-1]['total_profit']
 
-        plt.suptitle(
-            "Total Reward: %.6f" % total_reward + ' ~ '
-            + "Total Profit: %.6f" % total_profit
-        )
+        # Count actions
+        action_counts = Counter(obj['action'] for obj in render_hist)
+
+        total_action_buy = action_counts[Actions.Buy]
+        total_action_sell = action_counts[Actions.Sell]
+        total_action_close = action_counts[Actions.Close]
+        total_action_hold = action_counts[Actions.Hold]
+
+        plt.title("Total Reward: %.6f ~ Total Profit: %.6f" %
+                  (total_reward, total_profit))
+        plt.suptitle("Total Long: %.1f ~ Total Short: %.1f ~ Total Close: %.1f ~ Total Hold: %.1f" % (
+            total_action_buy, total_action_sell, total_action_close, total_action_hold))
+
+        # Add legend
+        ax1.legend()
+
         plt.tight_layout()
         plt.show()
 

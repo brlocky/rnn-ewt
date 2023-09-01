@@ -30,8 +30,8 @@ class Trade():
         return self.get_trade_initial_capital() + self.trade_pnl
 
     def _get_trade_fee(self):
-        return self.trade_amount * self.trade_open_price * 0.01
-        # return 0.0
+        # return self.trade_amount * self.trade_open_price * 0.01
+        return 0.0
 
     def get_trade_initial_capital(self):
         return self.trade_amount * self.trade_open_price
