@@ -1,8 +1,9 @@
 {
-    "python.analysis.typeCheckingMode": "off",
+    "python.analysis.typeCheckingMode": "basic",
     "[python]": {
         "editor.defaultFormatter": "ms-python.autopep8"
     },
     "python.linting.flake8Enabled": true,
     "python.linting.enabled": true,
+    "terminal.integrated.gpuAcceleration": "off",
 }

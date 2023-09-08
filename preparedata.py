@@ -5,9 +5,7 @@ from matplotlib import pyplot as plt
 import mplfinance as mpf
 import pandas as pd
 import yfinance
-from zigzag import peak_valley_pivots
-
-from EwClassifier.utils_plot import plot_pivots
+from WaveCounter import process_pivots
 
 
 # Sample data (replace this with your own data)
@@ -26,7 +24,7 @@ tech_stocks_and_indexes = [
     "MSFT",    # Microsoft Corporation
     "GOOGL",   # Alphabet Inc. (Google)
     "AMZN",    # Amazon.com Inc.
-    "META",      # Meta Platforms, Inc. (Facebook)
+    "META",    # Meta Platforms, Inc. (Facebook)
     "TSLA",    # Tesla, Inc.
     "NVDA",    # NVIDIA Corporation
     "ADBE",    # Adobe Inc.
@@ -42,24 +40,19 @@ tech_stocks_and_indexes = [
 for symbol in tech_stocks_and_indexes:
     try:
         data = yfinance.download(symbol, start="2022-01-01",
-                                 end="2023-08-05", interval="1h")
+                                 end="2023-09-01", interval="1h")
 
-        # Process ZIGZAG
-        X = data['Close']
-        pivots = peak_valley_pivots(X, 0.01, -0.01)
-        zigzap = data.copy()
-        zigzap = zigzap.assign(Pivot=pivots)
-        csv_filename = os.path.join(
-            csv_directory, f"{symbol}_stock_zizzag_data.csv")
-        zigzap.to_csv(csv_filename)
+        # Enhance data
+        csv_filename = os.path.join(csv_directory, f"{symbol}.csv")
+        data = process_pivots(data)
 
-        # Process ZIGZAG Image
-        plot_filename = os.path.join(
-            csv_directory, f"{symbol}_plot.png")
-        plot_pivots(X, pivots, plot_filename)
+        # Convert the data to a pandas dataframe
+        data.index = pd.to_datetime(data.index).tz_localize(None)
+        data.index.name = 'Date'
 
-        # Process yfinance data
-        csv_filename = os.path.join(csv_directory, f"{symbol}_stock_data.csv")
+        # Format the index as strings without timezone
+        # data.index = data.index.strftime('%Y-%m-%d %H:%M:%S')
+        # Save
         data.to_csv(csv_filename)
 
         # Process yfinance Image

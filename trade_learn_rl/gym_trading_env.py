@@ -19,7 +19,7 @@ window_size = 25
 
 env = CustomEnv(
     df=df,
-    window_size=window_size,
+    windows=window_size,
     # render_mode="human",
 )
 
@@ -66,7 +66,7 @@ model.save(agent_file_name)
 df2 = df.iloc[:100]
 env = CustomEnv(
     df=df2,
-    window_size=window_size,
+    windows=window_size,
     # render_mode="human",
 )
 
