@@ -1,6 +1,7 @@
 
 import mplfinance as fplt
 import numpy as np
+from pandas import wide_to_long
 
 
 def plot_pivots(df, col_pivot, title='Title'):
@@ -58,13 +59,16 @@ def plot_pivots(df, col_pivot, title='Title'):
 
     padding = np.max(df['High']) - np.min(df['Low'])
     padding *= 0.1
+
+    plot_type = 'line' if len(df) > 300 else 'ohlc_bars'  # candlestick
+
     fplt.plot(
         df,
         addplot=[pivots_high, pivots_low],
-        # type='line',
-        type='candlestick',
+        type=plot_type,
         style='charles',
         title=title,
+        figscale=2,
         # volume=True,
         # show_nontrading=True,
         # Set the Y-axis limits (min_y and max_y)

@@ -60,11 +60,11 @@ class ZigZag(object):
             current_low = self.low[t]
 
             # Inside candle
-            if current_high <= last_high and current_low >= last_low:
+            if current_high < last_high and current_low > last_low:
                 self.update_last_pivot(t, -self.last_pivot_type)
 
             # Outside Candel
-            elif current_high > last_high and current_low < last_low:
+            elif current_high >= last_high and current_low <= last_low:
                 new_pivot = self._identify_pivot_from_next(
                     t,
                     current_high,
