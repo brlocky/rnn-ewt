@@ -1,1 +1,1 @@
-from .process_pivots import process_pivots
+from .zigzag import ZigZag

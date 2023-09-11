@@ -1,5 +1,4 @@
 from collections import Counter
-import math
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
@@ -38,9 +37,9 @@ class CustomEnv(gym.Env):
         self.trade_fee_ask_percent = 0.005  # unit
         self._initial_balance = 1000
         self._share_size = 1
-        self._porfolio = Portfolio(self._initial_balance)
+        self._portfolio = Portfolio(self._initial_balance)
 
-        # episode
+        # Episode
         self._start_tick = self.windows
         self._current_tick = self._start_tick
         self._last_trade_open_tick = 0
@@ -59,24 +58,43 @@ class CustomEnv(gym.Env):
         self._all_history = []
         self._reset_counter = -1
 
-        # spaces
+        # Spaces
         self.action_space = spaces.Discrete(len(Actions))
-        self.observation_space = spaces.Box(
+
+        features_space = spaces.Box(
             -np.inf,
             np.inf,
-            # shape=[
-            #    self.windows - self.lstm_window,
-            #    self.lstm_window,
-            #    len(self.features[0])
-            # ] """
             shape=[
-                self.windows,
-                len(self.features[0])
-            ]
+                # self.windows,
+                # len(self.features[0])
+                self.windows - self.lstm_window,
+                self.lstm_window,
+                self.features.shape[1]
+            ],
+            dtype=np.float32
+        )
+
+        position_space = spaces.Discrete(3)
+        percentage_space = spaces.Box(
+            low=0,         # Minimum value (0%)
+            high=100,      # Maximum value (100%)
+            shape=(1,),    # Shape of the space (scalar, as it's a single percentage value)
+            dtype=np.float32  # Data type (float32 is commonly used)
+        )
+
+        self.observation_space = spaces.Dict(
+            spaces=dict(
+                features=features_space,
+                position=position_space,
+                price_percentage=percentage_space,
+                pnl_percentage_balance=percentage_space,
+                pnl_percentage_trade=percentage_space,
+            )
         )
 
         # ValueError: could not broadcast input array from shape (20,10,7) into shape (10,30,7)
         # (n_samples x timesteps x n_features)
+        a = 1
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -95,7 +113,7 @@ class CustomEnv(gym.Env):
         self.features = self._process_data()
 
         # Refresh Portfolio
-        self._porfolio = Portfolio(self._initial_balance)
+        self._portfolio = Portfolio(self._initial_balance)
 
         # Create History
         info = self._get_step_info()
@@ -113,36 +131,42 @@ class CustomEnv(gym.Env):
 
         # Once this should be a new candlestick we will use the open price
         current_price = self.prices_open[self._current_tick]
-        self._porfolio.update(current_price)
+        self._portfolio.update(current_price)
 
         self._action = Actions(action)
         # Open Long
         if self._action == Actions.Buy:
-            if self._porfolio._current_trade and self._porfolio._current_trade.trade_direction == TradeDirection.Short:
-                self._porfolio.close_trade(current_price)
+            if self._portfolio._current_trade and self._portfolio._current_trade.trade_direction == TradeDirection.Short:
+                self._portfolio.close_trade(current_price)
                 self._position = Positions.NoPosition
                 self._last_trade_close_tick = self._current_tick
 
-            if self._porfolio.open_trade(
-                    TradeDirection.Long, current_price, self._share_size):
+            if self._portfolio.open_trade(
+                    TradeDirection.Long,
+                    current_price,
+                    self._share_size
+            ):
                 self._position = Positions.Long
                 self._last_trade_open_tick = self._current_tick
 
         # Open Short
         if self._action == Actions.Sell:
-            if self._porfolio._current_trade and self._porfolio._current_trade.trade_direction == TradeDirection.Long:
-                self._porfolio.close_trade(current_price)
+            if self._portfolio._current_trade and self._portfolio._current_trade.trade_direction == TradeDirection.Long:
+                self._portfolio.close_trade(current_price)
                 self._position = Positions.NoPosition
                 self._last_trade_close_tick = self._current_tick
 
-            if self._porfolio.open_trade(
-                    TradeDirection.Short, current_price, self._share_size):
+            if self._portfolio.open_trade(
+                    TradeDirection.Short,
+                    current_price,
+                    self._share_size
+            ):
                 self._position = Positions.Short
                 self._last_trade_open_tick = self._current_tick
 
         # Close Position
         if self._action == Actions.NoAction:
-            if self._porfolio.close_trade(current_price):
+            if self._portfolio.close_trade(current_price):
                 self._position = Positions.NoPosition
                 self._last_trade_close_tick = self._current_tick
 
@@ -156,13 +180,10 @@ class CustomEnv(gym.Env):
 
         observation = self._get_observation()
 
-        if self._current_tick == self._end_tick or self._porfolio.get_balance() <= 0:
+        if self._current_tick == self._end_tick or self._portfolio.get_balance() <= 0:
             self.done = True
 
         return observation, step_reward, self.done, False, info
-
-    def _smooth_reward(self, value: float, trade_ticks: int, smoothing_coefficient=0.3):
-        return (1 + np.log(trade_ticks) * smoothing_coefficient) * value
 
     def _is_price_increase(self):
         len_to_check = 3
@@ -184,58 +205,59 @@ class CustomEnv(gym.Env):
 
         last_pnl = self._get_history("open_pnl", -1)
         last_position = self._get_history("position", -1)
-        current_balance = self._porfolio.get_balance()
+        current_balance = self._portfolio.get_balance()
         price_will_increase = self._is_price_increase()
 
-        close_pivots = self.pivots[self._current_tick - 8:self._current_tick][0]
+        close_pivots = self.pivots[self._current_tick - 4:self._current_tick][0]
         pivot_high = np.any(close_pivots == 1)
         pivot_low = np.any(close_pivots == -1)
 
-        rsi_values = self.rsi[self._current_tick - 8:self._current_tick]
+        rsi_values = self.rsi[self._current_tick - 4:self._current_tick]
         rsi_high = np.any(rsi_values > 70)
         rsi_low = np.any(rsi_values < 30)
 
         # New Long
-        if self._action == Actions.Buy:
-            """ if pivot_low:
-                step_reward += 0.5
+        if self._action == Actions.Buy and last_position == Positions.NoPosition:
+            if pivot_low:
+                step_reward += 0.05
             else:
-                step_reward -= 0.3 """
+                step_reward -= 0.03
 
             if rsi_low:
-                step_reward += 0.5
+                step_reward += 0.05
             else:
-                step_reward -= 0.3
+                step_reward -= 0.03
 
         # New Short
-        if self._action == Actions.Sell:
-            """ if pivot_high:
-                step_reward += 0.5
+        if self._action == Actions.Sell and last_position == Positions.NoPosition:
+            if pivot_high:
+                step_reward += 0.05
             else:
-                step_reward -= 0.3 """
+                step_reward -= 0.03
 
             if rsi_high:
-                step_reward += 0.5
+                step_reward += 0.05
             else:
-                step_reward -= 0.3
+                step_reward -= 0.03
 
         # Position Holding
-        if (self._action == Actions.Buy or self._action == Actions.Sell):
-            balance = self._porfolio.get_balance()
-            # last_balance = self._get_history("balance", -1)
-            last_balance = self._get_history("balance", -last_open_position_ticks)
+        if (self._action == Actions.Buy or self._action == Actions.Sell) and last_position != Positions.NoPosition:
+            balance = self._portfolio.get_balance()
+            last_balance = self._get_history("balance", -1)
+            # last_balance = self._get_history("balance", -last_open_position_ticks)
             step_reward += (balance - (last_balance)) / last_balance * 100
 
         # Position Closed
         if self._action == Actions.NoAction and (last_position == Positions.Long or last_position == Positions.Short):
-            balance = self._porfolio.get_balance()
+            balance = self._portfolio.get_balance()
             last_balance = self._get_history("balance", -last_open_position_ticks)
             step_reward += (balance - (last_balance)) / last_balance * 100
 
-        if self._action == Actions.NoAction and last_position == Positions.NoPosition and not rsi_high and not rsi_low:
-            step_reward -= 0.01 * (last_close_position_ticks - 1)
+        # if self._action == Actions.NoAction and last_position == Positions.NoPosition and not rsi_high and not rsi_low:
+        #    step_reward -= 0.01 * (last_close_position_ticks - 1)
 
-        return step_reward
+        # return 1 if step_reward >= 0 else -1 + (self._current_tick + 1 / self._current_tick + 1)
+        return max(-1, min(0, step_reward)) if step_reward < 0 else min(1, max(0, step_reward))
 
     def _process_data(self):
         self.prices_close = self.df.loc[:, 'Close'].to_numpy()
@@ -255,38 +277,22 @@ class CustomEnv(gym.Env):
         # Apply _calculate_candle_difference to the NumPy array
         # processed_data = self._calculate_table_difference(data_to_process)
 
-        open = self.df["Open"] / self.df["Close"]
-        high = self.df["High"] / self.df["Close"]
-        low = self.df["Low"] / self.df["Close"]
-        close = self.df["Close"].pct_change().values.reshape(-1, 1)
+        open = self.df["Open"]
+        high = self.df["High"]
+        low = self.df["Low"]
+        close = self.df["Close"]
+        volume = self.df["Volume"]
+        rsi = self.df["feature_rsi"]
 
         input_features = np.zeros((len(self.dates), 2), dtype=np.float64).reshape(-1, 2)
-        open = open.values.reshape(-1, 1)
-        high = high.values.reshape(-1, 1)
-        low = low.values.reshape(-1, 1)
-        volume = self.df["Volume"].pct_change().values.reshape(-1, 1)
-        rsi = self.df["feature_rsi"].pct_change().values.reshape(-1, 1)
+        # open = open.values.reshape(-1, 1)
+        # high = high.values.reshape(-1, 1)
+        # low = low.values.reshape(-1, 1)
+        # volume = self.df["Volume"].values.reshape(-1, 1)
+        # rsi = self.df["feature_rsi"].values.reshape(-1, 1)
 
-        signal_features = np.hstack(
-            (
-                close,
-                open,
-                high,
-                low,
-                volume,
-                rsi
-                # input_features
-            )
-        )
-
-        # signal_features[:, -1] = self._initial_balance
-        """ signal_features[:, -1] = 3
-        signal_features[:, -2] = Positions.Long.value
-        signal_features[:-3, -1] = 0.0
-        signal_features[:-3, -2] = Positions.NoPosition.value """
-
-        # clean nan
-        signal_features[~np.isnan(signal_features).any(axis=1)]
+        signal_features = self.df[["Open", "High",
+                                   "Low", "Close", "Volume", "feature_rsi"]]
 
         # Create Scaler
         self.sc.fit(signal_features)
@@ -300,28 +306,29 @@ class CustomEnv(gym.Env):
         new_value = self._get_history("balance", -1)
 
         percentage_change = ((new_value - old_value)
-                             / abs(old_value)) if old_value != 0 else 0.0
-
-        """ # Update Porfolio Pnl
-        self.features[self._current_tick, -1] = percentage_change
-
-        # Update current position
-        self.features[self._current_tick, -2] = info['position'].value """
+                             / abs(old_value)) * 100 if old_value != 0 else 0.0
 
         # Get the next observation window
         observation = self.features[self._current_tick
                                     + 1 - self.windows: self._current_tick + 1].copy()
 
         # Apply transformation
-        observation = self.sc.transform(observation)
+        # observation = self.sc.transform(observation)
 
-        return observation
+        # return observation
 
-        # stacked_observations = []
-        # for i in range(len(observation) - self.lstm_window):
-        #    stacked_observations.append(observation[i:i + self.lstm_window])
+        stacked_observations = []
+        for i in range(len(observation) - self.lstm_window):
+            stacked_observations.append(observation[i:i + self.lstm_window])
 
-        # return stacked_observations
+        multi_input = {
+            'features': stacked_observations,
+            'position': self._position.value,
+            'price_percentage': percentage_change,
+            'pnl_percentage_balance': self._portfolio.get_total_pnl_percentage(),
+            'pnl_percentage_trade': self._portfolio.get_open_pnl_percentage(),
+        }
+        return multi_input
 
     def _calculate_table_difference(self, data):
         # Use list comprehension to calculate differences for all columns
@@ -346,9 +353,9 @@ class CustomEnv(gym.Env):
         return {
             "tick": self._current_tick,
             "total_reward": self._total_reward,
-            "balance": self._porfolio.get_balance(),
-            "total_profit": self._porfolio.get_total_pnl(),
-            "open_pnl": self._porfolio.get_open_pnl(),
+            "balance": self._portfolio.get_balance(),
+            "total_profit": self._portfolio.get_total_pnl(),
+            "open_pnl": self._portfolio.get_open_pnl(),
             "position": self._position,
             "action": self._action,
         }
@@ -459,9 +466,3 @@ class CustomEnv(gym.Env):
         plt.show() """
 
         plt.show()
-
-    def close(self):
-        plt.close()
-
-    def save_rendering(self, filepath):
-        plt.savefig(filepath)

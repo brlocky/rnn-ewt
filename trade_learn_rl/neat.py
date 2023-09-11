@@ -3,6 +3,8 @@ from typing import Dict
 import torch as th
 from stable_baselines3.common.evaluation import evaluate_policy
 
+from utils.model import train_model
+
 
 class BaseLines3Neat():
     def __init__(self, model, env, generations=1, population=2, total_timesteps=10_000):
@@ -60,21 +62,21 @@ class BaseLines3Neat():
                 self.model.set_env(vec_env)
 
                 # Train the candidate
-                self.model.learn(total_timesteps=self.total_timesteps)
+                train_model(self.model, total_timesteps=self.total_timesteps)
 
                 # Evaluate the candidate
                 new_env = self.model.get_env()
                 new_env.reset()
 
                 fitness, _ = evaluate_policy(
-                    self.model, new_env, n_eval_episodes=25, warn=False
+                    self.model, new_env, n_eval_episodes=5, warn=False
                 )
                 total_profit = new_env.buf_infos[-1]['total_profit']
                 candidates.append((candidate, total_profit, fitness))
 
             # Take top candiates
             top_candidates = sorted(
-                candidates, key=lambda x: x[2], reverse=True)[:n_elite]
+                candidates, key=lambda x: x[1] + x[2], reverse=True)[:n_elite]
 
             # Copy Top Candidate Params to mutate Population
             top_models_params = [sublist[0] for sublist in top_candidates]

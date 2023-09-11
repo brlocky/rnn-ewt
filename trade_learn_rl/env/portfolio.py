@@ -7,7 +7,7 @@ class TradeDirection(Enum):
 
 
 # fee_ratio = 0.005
-fee_ratio = 0.005
+fee_ratio = 0.01
 
 
 class Trade():
@@ -134,6 +134,20 @@ class Portfolio():
     # Realized and open PnL
     def get_total_pnl(self):
         return self.get_closed_pnl() + self.get_open_pnl()
+
+    # Total Pnl Percentage relative to balance
+    def get_total_pnl_percentage(self):
+        total_pnl = self.get_total_pnl()
+        available_balance = self.get_available_balance()
+
+        # Calculate percentage
+        if available_balance > 0:
+            percentage = (total_pnl / available_balance) * 100
+        else:
+            # Handle the case where available_balance is 0 to avoid division by zero
+            percentage = 0  # You can choose another appropriate value here
+
+        return percentage
 
     # Realized PnL
     def get_closed_pnl(self):
