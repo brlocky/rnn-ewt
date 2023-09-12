@@ -15,7 +15,7 @@ class ZigZag(object):
         self.len = len(self.close)
 
         # Initialize Pivots array with length of Close
-        self.pivots = np.zeros(self.len, dtype='i1')
+        self.pivots = [0] * self.len
 
         # Identify initial Pivot
         initial_pivot = self._identify_pivot_from_next(

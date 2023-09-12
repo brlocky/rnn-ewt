@@ -1,70 +1,42 @@
 
-from enum import Enum
-from typing import List
+from math import inf
+from .core.wave_node import ChartData
+from .core.wave_search import WaveSearch
+from .types import Degree, Trend, Wave
 
-class Trend(Enum):
-    UP = 1
-    DOWN = -1
-
-class Wave(Enum):
-    _1 = 1
-    _2 = 2
-    _3 = 3
-    _4 = 4
-    _5 = 5
-    _A = 6
-    _B = 7
-    _C = 8
-
-class Degree(Enum):
-    _SUB_MINUETTE = 1
-    _MINUETTE = 2
-    _MINUTE = 3
-    _MINOR = 4
-    _INTERMEDIATE = 5
-    _PRIMARY = 6
-    _CYCLE = 7
-    _SUPERCYCLE = 8
-    _GRAND_SUPERCYCLE = 9
-
-class Pivot:
-    def __init__(self, x:int, y:float):
-        self.time = x
-        self.price = y
-
-class WaveNode:
-    def __init__(self, degree:Degree, wave_from:Wave, wave_to:Wave, trend:Trend, pivots:List[Pivot]):
-        self.degree = degree
-        self.wave_from = wave_from
-        self.wave_to = wave_to
-        self.trend = trend
-        self.pivots = pivots
-        self.children = []
-
-    def add_child(self, child_node):
-        self.children.append(child_node)
-
-    def __str__(self, level=0):
-        ret = "\t" * level + f"Degree: {self.degree}, Wave From: {self.wave_from}, Wave To: {self.wave_to}, Trend: {self.trend}\n"
-        for pivot in self.pivots:
-            ret += "\t" * (level + 1) + f"Pivot: {pivot.time}, {pivot.price}\n"
-        for child in self.children:
-            ret += child.__str__(level + 1)
-        return ret
 
 class Elliott(object):
 
-    def __init__(self, df, pivots, start=0, end=0) -> None:
-        print(f"Elliott Start size{len(df)} Pivots{len(pivots)}")
+    def __init__(self, df, start=0, end=0) -> None:
+        print(f"Elliott Start size{len(df)}")
 
-        self.current_wave = Wave._1
+        assert (start == 0 or (len(df) < start))
+        assert (start == 0 and end == 0 or (len(df) > end and end > start + 20))
+
         self.start = start
         self.end = end
 
-        assert(self.start == 0 or (len(df) < self.start))
-        assert(self.end == 0 or (len(df) > self.end and self.end > self.start))
-    
-    def _do_work(self):
-        
-        # Prepare tree structure
-        
+        self.data = ChartData(df)
+
+        self.waves = []
+
+    # Identify possible wave counts for bullish and bearish approachs
+    # 1 - Identify current Wave Degree
+    # 1.1 - Information about degree and current wave
+    # 2 - Find next Wave
+    # 3 - loop with information about current degree and wave count
+    # 4 - Stop
+    # 4.1 - Defined Const for max loops
+    # 4.2 - Got to the end of the Wave Count
+    # 4.3 - Got to the end of the Wave Degree
+    # 5 - Print Waves
+    # 5.1 - Identified
+    # 5.2 - Projections for bullish and bearish
+
+    def get_waves(self):
+
+        # Identify current Wave Degree
+        self.current_wave = Wave._1
+
+        search = WaveSearch(self.data, Degree._SUB_MINUETTE, 0, len(self.data.opens))
+        return search.run()

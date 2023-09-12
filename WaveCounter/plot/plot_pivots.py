@@ -4,7 +4,7 @@ import numpy as np
 from pandas import wide_to_long
 
 
-def plot_pivots(df, pivots, title='Title'):
+def plot_pivots(df, title='Title'):
 
     def pivot_high_pos(x, i, pivots):
         if pivots[i] == 1:
@@ -22,7 +22,7 @@ def plot_pivots(df, pivots, title='Title'):
         lambda row: pivot_high_pos(
             row,
             df.index.get_loc(row.name),
-            pivots
+            df['Pivot']
         ),
         axis=1
     )
@@ -30,7 +30,7 @@ def plot_pivots(df, pivots, title='Title'):
         lambda row: pivot_low_pos(
             row,
             df.index.get_loc(row.name),
-            pivots
+            df['Pivot']
         ),
         axis=1
     )
